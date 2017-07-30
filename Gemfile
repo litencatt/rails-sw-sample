@@ -27,6 +27,7 @@ gem 'webpush'
 gem 'serviceworker-rails'
 
 group :development, :test do
+  gem 'pry-rails'
   gem 'pry-byebug'
 end
 
