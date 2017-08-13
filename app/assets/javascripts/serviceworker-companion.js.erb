@@ -1,34 +1,121 @@
-if (navigator.serviceWorker) {
-  navigator.serviceWorker.register('/serviceworker.js', { scope: './' })
-    .then(function(reg) {
-      console.log('[Page] Service worker registered!');
+window.addEventListener('load', function() {
+  document.getElementById('register').addEventListener('click', register, false);
+  document.getElementById('push').addEventListener('click', setPush, false);
 
-      var vapidPublicKey = new Uint8Array(<%= Base64.urlsafe_decode64(ENV['VAPID_PUBLIC_KEY']).bytes %>);
+  if (isEnableNotification() && isEnableSW()) {
+    navigator.serviceWorker.ready.then(checkPush);
+  } else {
+    console.log("非対応ブラウザです");
+    document.getElementById('register').disabled = true;
+    document.getElementById('push').disabled = true;
+  }
+}, false);
 
-      // プッシュ通知の購読
-      reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: vapidPublicKey,
-      }).then(function(subscription){
-        postWebPushSubscriptionToServer(subscription);
-      });
-    });
+function isEnableNotification() {
+  return ("Notification" in window);
 }
 
-// WebPushが使えるブラウザの場合
-// NOTE: 今回はWebPushだけなので。他でSW使いたかったら要変更
-var postWebPushSubscriptionToServer = function(subscription) {
-  var jsonData = {};
+function isEnableSW() {
+  return ('serviceWorker' in navigator);
+}
+
+function register() {
+  navigator.serviceWorker.register('/serviceworker.js', { scope: './' }).then(function() {
+    console.log('Service worker registered!');
+    checkNotificationPermission();
+  });
+}
+
+function checkNotificationPermission() {
+  Notification.requestPermission(function(permission) {
+    // プッシュ通知が既に有効の場合はボタンを無効化
+    if (permission !== "denied"){
+      document.getElementById('push').disabled = false;
+    } else {
+      // プッシュ通知が許可されていない
+      console.log("Not permitted yet.");
+    }
+  })
+}
+
+var subscription = null;
+
+function setPush() {
+  if (!subscription) {
+    if (Notification.permission == 'denied') {
+      console.log("プッシュ通知を有効にできません。");
+      return;
+    }
+
+    navigator.serviceWorker.ready.then(subscribe);
+  } else {
+    navigator.serviceWorker.ready.then(unsubscribe);
+  }
+}
+
+function checkPush(sw) {
+  sw.pushManager.getSubscription().then(setSubscription, resetSubscription);
+}
+
+function setSubscription(s) {
+  if(!s) {
+    resetSubscription();
+  } else {
+    console.log(s);
+
+    // 購読済みの場合
+    document.getElementById('register').disabled = true;
+    subscription = s;
+    var p = document.getElementById('push');
+    p.textContent = "プッシュ通知を解除する";
+    p.disabled = false;
+    postSubscription(s);
+  }
+}
+
+function resetSubscription() {
+  document.getElementById('register').disabled = true;
+  subscription = null;
+  var p = document.getElementById('push');
+  p.textContent = 'プッシュ通知を有効にする';
+  p.disabled = false;
+}
+
+// プッシュ通知の購読
+function subscribe(sw) {
+  var vapidPublicKey = new Uint8Array(<%= Base64.urlsafe_decode64(ENV['VAPID_PUBLIC_KEY']).bytes %>);
+  var params = {
+    userVisibleOnly: true,
+    applicationServerKey: vapidPublicKey
+  }
+
+  sw.pushManager.subscribe(params).then(function(subscription){
+    postSubscription(subscription);
+  });
+}
+
+// プッシュ通知設定解除
+function unsubscribe() {
+  if (subscription){
+    // deleteSubscription();
+
+    subscription.unsubscribe();
+  }
+  resetSubscription();
+}
+
+function postSubscription(subscription) {
   if (subscription) {
-    jsonData = {
+    var jsonData = {
       endpoint: subscription.endpoint,
       p256dh: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('p256dh')))).replace(/\+/g, '-').replace(/\//g, '_'),
       auth: btoa(String.fromCharCode.apply(null, new Uint8Array(subscription.getKey('auth')))).replace(/\+/g, '-').replace(/\//g, '_')
     };
+    //  console.log(jsonData);
 
-    params = {
+    var params = {
       subscription: jsonData
-    }
+    };
 
     $.ajax({
       type: 'POST',

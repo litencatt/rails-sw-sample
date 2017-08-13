@@ -1,15 +1,15 @@
 var CACHE_VERSION = 'v1';
 var CACHE_NAME = CACHE_VERSION + ':sw-cache-';
 
-function onSWInstall(event) {
+self.addEventListener('install', function(event) {
   return event.waitUntil(
     caches.open(CACHE_NAME).then(function prefill(cache) {
       return cache.addAll([]);
     })
   );
-}
+});
 
-function onSWActivate(event) {
+self.addEventListener('activate', function(event) {
   return event.waitUntil(
     caches.keys().then(function(cacheNames) {
       return Promise.all(
@@ -24,9 +24,9 @@ function onSWActivate(event) {
       );
     })
   );
-}
+});
 
-function onSWPush(event) {
+self.addEventListener("push", function(event) {
   // event.data are null when Firefox's debugger push
   // event.data are PushMessageData object and cannot exec event.data.json, event.data.text => 'Test push message from DevTools.'
   var json = event.data ? event.data.json() : {"title" : "DEBUG TITLE", "body" : "DEBUG BODY"};
@@ -39,16 +39,11 @@ function onSWPush(event) {
       }
     })
   );
-}
+})
 
-function onSWNotificationClick(event) {
+self.addEventListener("notificationclick", function(event) {
   event.notification.close();
   return event.waitUntil(
     clients.openWindow(event.notification.data != null ? event.notification.data.target_url : '/')
   );
-}
-
-self.addEventListener('install', onSWInstall);
-self.addEventListener('activate', onSWActivate);
-self.addEventListener("push", onSWPush);
-self.addEventListener("notificationclick", onSWNotificationClick);
+})
